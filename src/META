@@ -1,0 +1,7 @@
+version = "1.0"
+description = "Binding to libsndfile, sound file manipulation library"
+archive(byte) = "sndfile.cma"
+archive(byte, plugin) = "sndfile.cma"
+archive(native) = "sndfile.cmxa"
+archive(native, plugin) = "sndfile.cmxs"
+exists_if = "sndfile.cma"

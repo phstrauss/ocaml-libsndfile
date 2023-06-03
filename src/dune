@@ -1,0 +1,23 @@
+(env
+ (dev
+  (flags (:standard -w -32 -g))))
+
+(rule
+ (targets c_flags.sexp c_library_flags.sexp)
+ (action
+  (run ./config/discover.exe)))
+
+(library
+ (name sndfile)
+ (public_name sndfile)
+ (foreign_stubs
+  (language c)
+  (names sndfile_stub)
+  (flags
+   :standard
+   -g
+   -O2
+   (:include c_flags.sexp)))
+ (c_library_flags
+  :standard
+  (:include c_library_flags.sexp)))

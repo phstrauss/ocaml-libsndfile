@@ -1,0 +1,168 @@
+
+Look at Bigarray module:
+
+	http://caml.inria.fr/pub/docs/manual-ocaml/manual043.html
+	http://pauillac.inria.fr/cdrom/www/caml/ocaml/htmlman/manual042.html
+	http://jhenrikson.org/forklift/checkout/doc/higher_order.html
+
+From :
+
+	http://webcvs.freedesktop.org/cairo/cairo-ocaml/test/basket.ml?revision=1.7&view=markup
+
+ begin
+    prerr_endline "Bigarray, PPM and PNG (ARGB32) " ;
+    let arr = 
+      Bigarray.Array2.create Bigarray.int32 Bigarray.c_layout
+	(int_of_float y_inches * 72) (int_of_float x_inches * 72) in
+    Bigarray.Array2.fill arr 0xffffffl ;
+    let s = Cairo_bigarray.of_bigarr_32 ~alpha:true arr in
+    let c = Cairo.create s in
+    draw c ;
+    do_file_out "basket.ppm"
+      (fun oc -> Cairo_bigarray.write_ppm_int32 oc arr) ;
+    Cairo_png.surface_write_to_file s "basket.png"
+  end
+
+
+===========================================================================
+
+Actually many scientific OCaml libraries use the bigarray module.  It
+is also the case of Lacaml (a binding to LAPACK) or FFTW (a binding
+to, hum, FFTW!).  
+
+Now I do not understand why you could not have a function
+
+  val read_array1 : t -> ('a,'b,'c) Bigarray.Array1.t -> int
+  
+  Sndfile.read_array1 f a read data from the file f into the supplied
+  bigarray a and return the number of float values read.
+  
+  For multi-channel files, the array length must be an integer
+  multiple of the number of channels.
+
+The idea is that the read function adapts the type of the bigarray
+passed (if possible; if not, raise an exception).  One could also
+require that a Bigarray.Array2.t is used with one of its dimensions
+being the number of channels (if possible allowing easy slicing to
+extract a given channel).
+
+Same goes for a write function.
+
+BTW, the last part of the comment is a bit laconic: one wonders "or
+what ?".  An exception is raised ?  The array slots with higher
+indexes are never filled ?  Garbage can be returned ? etc.
+
+> I was particularly interested if there was any utility to providing
+> functions for accessing shorts or ints. So far noone has come up
+> with a need for these.
+
+I did not follow thoroughly the discussion but there is an Int32
+module and the C interface has "Int32_val(v)" and "Int64_val(v)".  To
+create a caml Int32.t (resp. Int64.t), you must allocate a custom
+block containing an "int32" (resp. int64).  See section 18 of the
+manual.
+
+
+
+===========================================================================
+
+
+(* cairo_bigarray.mli *)
+(*
+
+open Bigarray
+
+val of_bigarr :
+  ('a, 'b, c_layout) Array2.t -> Cairo.format -> 
+  width:int -> height:int -> stride:int -> Cairo.image_surface
+
+val of_bigarr_32 : alpha:bool -> (int32, int32_elt, c_layout) Array2.t -> Cairo.image_surface
+val of_bigarr_24 : (int, int_elt, c_layout) Array2.t -> Cairo.image_surface
+val of_bigarr_8  : (int, int8_unsigned_elt, c_layout) Array2.t -> Cairo.image_surface
+
+val write_ppm_int32 : out_channel -> (int32, int32_elt, c_layout) Array2.t -> unit
+val write_ppm_int   : out_channel -> (int,   int_elt,   c_layout) Array2.t -> unit
+
+*)
+
+
+
+
+
+(* cairo_bigarray.ml *)
+(*
+
+open Bigarray
+
+external bigarray_kind_float : ('a, 'b, c_layout) Array2.t -> bool
+  = "ml_bigarray_kind_float"
+external bigarray_byte_size  : ('a, 'b, c_layout) Array2.t -> int
+  = "ml_bigarray_byte_size"
+
+external image_surface_create : 
+  ('a, 'b, c_layout) Array2.t ->
+  Cairo.format -> width:int -> height:int -> stride:int ->
+  Cairo.image_surface = "ml_cairo_image_surface_create_for_data"
+
+
+let of_bigarr arr format ~width ~height ~stride =
+  if bigarray_kind_float arr
+  then invalid_arg "wrong Bigarray kind" ;
+  if bigarray_byte_size arr < stride * height
+  then invalid_arg "Bigarray too small" ;
+  image_surface_create arr format width height stride
+
+let of_bigarr_32 ~alpha (arr : (int32, int32_elt, c_layout) Array2.t) =
+  let h = Array2.dim1 arr in
+  let w = Array2.dim2 arr in
+  of_bigarr arr 
+    (if alpha then Cairo.FORMAT_ARGB32 else Cairo.FORMAT_RGB24)
+    w h (4 * w)
+
+let of_bigarr_24 (arr : (int, int_elt, c_layout) Array2.t) =
+  if Sys.word_size <> 32
+  then failwith "your ints have 63 bits" ;
+  let h = Array2.dim1 arr in
+  let w = Array2.dim2 arr in
+  of_bigarr arr
+    Cairo.FORMAT_RGB24
+    w h (4 * w)
+
+let of_bigarr_8 (arr : (int, int8_unsigned_elt, c_layout) Array2.t) =
+  let h = Array2.dim1 arr in
+  let w = Array2.dim2 arr in
+  of_bigarr arr
+    Cairo.FORMAT_A8
+    w h w
+
+let output_pixel oc p =
+  let r = (p lsr 16) land 0xff in
+  output_byte oc r ;
+  let g = (p lsr 8) land 0xff in
+  output_byte oc g ;
+  let b = p land 0xff in
+  output_byte oc b 
+
+let write_ppm_int32 oc (arr : (int32, int32_elt, c_layout) Array2.t) =
+  let h = Array2.dim1 arr in
+  let w = Array2.dim2 arr in
+  Printf.fprintf oc "P6 %d %d 255\n" w h ;
+  for i=0 to pred h do
+    for j=0 to pred w do
+      output_pixel oc (Int32.to_int arr.{i, j})
+    done
+  done ;
+  flush oc
+
+let write_ppm_int oc (arr : (int, int_elt, c_layout) Array2.t) =
+  let h = Array2.dim1 arr in
+  let w = Array2.dim2 arr in
+  Printf.fprintf oc "P6 %d %d 255\n" w h ;
+  for i=0 to pred h do
+    for j=0 to pred w do
+      output_pixel oc arr.{i, j}
+    done
+  done ;
+  flush oc
+
+*)
