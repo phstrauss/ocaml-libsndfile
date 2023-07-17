@@ -85,7 +85,7 @@ caml_sf_open_private (value v_filename, value v_mode, value v_fmt, value v_chann
 	v_wrapper = caml_alloc_custom (&sndfile_custom_ops, sizeof (SF_WRAPPER), sizeof (SF_WRAPPER), sizeof (SF_WRAPPER)) ;
 	wrapper = Data_custom_val (v_wrapper) ;
 	if (wrapper == NULL)
-		failwith ("Sndfile.sf_open : caml_alloc_custom failed.") ;
+		caml_failwith ("Sndfile.sf_open : caml_alloc_custom failed.") ;
 
 	memset (wrapper, 0, sizeof (*wrapper)) ;
 
@@ -137,7 +137,7 @@ caml_sf_open_private (value v_filename, value v_mode, value v_fmt, value v_chann
 
 		value *exn = caml_named_value ("sndfile_open_exn") ;
 		if (exn == NULL)
-			failwith ("asdasdasdas") ;
+			caml_failwith ("Uninspired should never happen failure: asdasdasdas") ;
 
 		caml_raise_with_arg (*exn, sferr) ;
 		} ;
